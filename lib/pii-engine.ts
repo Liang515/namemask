@@ -1,31 +1,38 @@
 import { PIIEntity, PIIEntityType, MaskingConfig } from './types';
 
-// Standard Chinese single-character surnames
+// Clean standard Chinese single-character surnames
 const SINGLE_SURNAMES = new Set([
   '陳', '林', '黃', '張', '李', '王', '吳', '劉', '蔡', '楊', '許', '鄭', '謝', '郭', '洪', '曾', '邱',
   '廖', '賴', '周', '葉', '蘇', '莊', '呂', '江', '何', '蕭', '羅', '高', '潘', '朱', '簡', '鍾', '彭',
   '游', '詹', '胡', '施', '沈', '余', '趙', '盧', '梁', '顏', '柯', '孫', '魏', '翁', '戴', '范', '宋',
   '方', '鄧', '杜', '傅', '侯', '曹', '薛', '丁', '卓', '馬', '董', '唐', '藍', '石', '蔣', '古', '紀',
-  '湯', '馮', '姜', '歐', '程', '田', '袁', '阮', '鐘', '黎', '金', '陸', '郝', '孔', '崔', '康', '毛',
-  '史', '顧', '龔', '邵', '萬', '錢', '嚴', '覃', '溫', '彭', '徐', '易', '喬', '莫', '關', '廖', '賈',
-  '陳', '林', '黃', '張', '李', '王', '吳', '劉', '蔡', '楊', '许', '郑', '谢', '郭', '洪', '曾', '邱',
-  '廖', '赖', '周', '叶', '苏', '庄', '吕', '江', '何', '萧', '罗', '高', '潘', '朱', '简', '钟', '彭'
+  '常', '薛', '姜', '賈', '嚴', '顧', '龔', '邵', '萬', '錢', '覃', '溫', '徐', '易', '喬', '莫', '關'
 ]);
 
 // Compound Chinese surnames (複姓)
 const COMPOUND_SURNAMES = [
   '歐陽', '司馬', '上官', '諸葛', '夏侯', '尉遲', '公孫', '申屠', '慕容', '宇文', '司徒', '鮮于',
-  '赫連', '皇甫', '羊舌', '澹台', '公冶', '宗政', '濮陽', '淳于', '單于', '太史', '端木', '巫馬',
-  '公西', '漆雕', '樂正', '壤駟', '公良', '拓跋', '夾谷', '宰父', '谷梁'
+  '赫連', '皇甫', '羊舌', '澹台', '公冶', '宗政', '濮陽', '淳于', '單于', '太史', '端木', '巫馬'
 ];
 
-// Common false positive words starting with surnames that should NOT be masked
-const FALSE_POSITIVES = new Set([
-  '陳列', '陳述', '陳舊', '陳設', '林木', '林業', '黃金', '黃昏', '張開', '張貼', '張望', '李子',
-  '王國', '王冠', '吳哥', '劉海', '蔡英文', '說明', '注意', '需求', '合作', '服務', '產品', '系統',
-  '資料', '問題', '聯絡', '電話', '郵件', '地址', '台中', '台北', '高雄', '台南', '新北', '桃園',
-  '新竹', '花蓮', '宜蘭', '苗栗', '彰化', '雲林', '嘉義', '屏東', '南投', '台東', '澎湖', '金門',
-  '馬祖', '日本', '韓國', '中國', '美國', '英國', '法國', '德國', '澳洲', '加拿大'
+// Common non-name vocabulary, politeness words, and business terms that MUST NOT be masked
+const COMMON_VOCABULARY = [
+  '謝謝', '謝謝您', '感謝', '非常感謝', '祝您', '祝福', '拜託', '麻煩', '請問', '合作', '安排', '協助',
+  '處理', '回覆', '收到', '了解', '明白', '辛苦', '順心', '平安', '健康', '快樂', '滿意', '喜歡', '希望',
+  '張開', '張貼', '張望', '張羅', '陳列', '陳述', '陳舊', '陳設', '林木', '林業', '林立', '黃金', '黃昏',
+  '黃頁', '黃牛', '李子', '李樹', '王國', '王冠', '王朝', '吳哥', '劉海', '周到', '周全', '周密', '周圍',
+  '周年', '周邊', '說明', '注意', '需求', '服務', '產品', '系統', '資料', '問題', '聯絡', '電話', '郵件',
+  '地址', '門市', '客服', '人員', '意見', '建議', '情況', '內容', '時間', '地點', '單位', '專案', '結果',
+  '幫忙', '經理', '主管', '主任', '填寫', '表單', '嘴巴', '看看', '親切', '非常', '就是', '這樣', '那樣',
+  '我們', '你們', '您好', '哈囉', '早安', '午安', '晚安', '品質', '價格', '優惠', '商品', '訂單', '發票',
+  '回饋', '反饋', '台北', '台中', '台南', '高雄', '新北', '桃園', '新竹', '花蓮', '宜蘭', '苗栗', '彰化',
+  '雲林', '嘉義', '屏東', '南投', '台東', '澎湖', '金門', '馬祖', '日本', '韓國', '中國', '美國', '英國'
+];
+
+// Modal particles and auxiliary words that cannot be part of a given name
+const INVALID_GIVEN_CHARS = new Set([
+  '了', '在', '是', '有', '和', '與', '或', '的', '至', '到', '去', '來', '說', '看', '做', '吃',
+  '給', '被', '讓', '把', '向', '對', '從', '用', '及', '等', '因', '為', '在', '過', '也', '您'
 ]);
 
 // Singleton segmentit instance
@@ -42,15 +49,15 @@ function getSegmentit() {
       if (ChsNameOptimizer) seg.use(ChsNameOptimizer);
       segmentitInstance = seg;
     } catch (e) {
-      console.warn('Failed to load segmentit, using fallback regex matcher:', e);
+      console.warn('Failed to load segmentit:', e);
     }
   }
   return segmentitInstance;
 }
 
 /**
- * Mask a Chinese Name based on configuration style
- * Example: 張小明 -> 張** (standard), 張** (preserve_first), *** (full_asterisk)
+ * High-Precision Chinese Name Masking
+ * Example: 張小明 -> 張**, 歐陽修 -> 歐**
  */
 export function maskChineseName(name: string, style: MaskingConfig['chineseMaskStyle'] = 'standard', maskChar: string = '*'): string {
   if (!name) return name;
@@ -60,11 +67,9 @@ export function maskChineseName(name: string, style: MaskingConfig['chineseMaskS
     return maskChar.repeat(len);
   }
 
-  // Check if compound surname
   const isCompound = COMPOUND_SURNAMES.some(s => name.startsWith(s));
   
   if (isCompound) {
-    // 歐陽修 -> 歐** (standard) or 歐陽*
     if (len <= 3) {
       return name[0] + maskChar.repeat(len - 1);
     } else {
@@ -73,27 +78,22 @@ export function maskChineseName(name: string, style: MaskingConfig['chineseMaskS
   }
 
   if (len === 2) {
-    // 王偉 -> 王*
     return name[0] + maskChar;
   } else if (len === 3) {
-    // 張小明 -> 張**
     return name[0] + maskChar.repeat(2);
   } else {
-    // 4+ char double surname e.g. 黃陳美麗 -> 黃***
     return name[0] + maskChar.repeat(len - 1);
   }
 }
 
 /**
- * Mask an English Name based on configuration style
- * Example: John Smith -> John S. (initial_last), J. Smith (initial_first), **** ***** (full_asterisk)
+ * Mask English Name
  */
 export function maskEnglishName(name: string, style: MaskingConfig['englishMaskStyle'] = 'initial_last', maskChar: string = '*'): string {
   if (!name) return name;
   const parts = name.trim().split(/\s+/);
   
   if (parts.length === 1) {
-    // Single word e.g. "Alice" -> "A****"
     const first = parts[0];
     return first[0] + maskChar.repeat(Math.max(1, first.length - 1));
   }
@@ -103,13 +103,11 @@ export function maskEnglishName(name: string, style: MaskingConfig['englishMaskS
   }
 
   if (style === 'initial_first') {
-    // "John Smith" -> "J. Smith"
     const first = parts[0];
     const rest = parts.slice(1).join(' ');
     return `${first[0]}. ${rest}`;
   }
 
-  // Default: initial_last ("John Smith" -> "John S.")
   const last = parts[parts.length - 1];
   const firstParts = parts.slice(0, -1).join(' ');
   return `${firstParts} ${last[0]}.`;
@@ -121,7 +119,6 @@ export function maskEnglishName(name: string, style: MaskingConfig['englishMaskS
 export function maskPhone(phone: string, maskChar: string = '*'): string {
   const digitsOnly = phone.replace(/\D/g, '');
   if (digitsOnly.length >= 7) {
-    // Keep first 4 and last 3, mask middle
     const start = phone.slice(0, 4);
     const end = phone.slice(-3);
     const middleLen = Math.max(3, phone.length - 7);
@@ -156,7 +153,7 @@ export function maskIdCard(id: string, maskChar: string = '*'): string {
 }
 
 /**
- * Primary Detection Engine for a single string text cell
+ * High-Precision PII Detection Engine
  */
 export function detectAndMaskPIIInText(
   text: string,
@@ -169,7 +166,6 @@ export function detectAndMaskPIIInText(
   let currentText = text;
   const entities: PIIEntity[] = [];
 
-  // Helper to replace matched entity and adjust text
   const applyReplacement = (
     orig: string,
     masked: string,
@@ -205,7 +201,7 @@ export function detectAndMaskPIIInText(
     }
   }
 
-  // 2. National ID Card / Passport Detection (Taiwan ID: [A-Z][1289]\d{8}, China ID: \d{17}[\dXx])
+  // 2. National ID Card / Passport Detection
   if (config.enableIdCard) {
     const twIdRegex = /\b[A-Z][1289]\d{8}\b/g;
     const cnIdRegex = /\b\d{17}[\dXx]\b/g;
@@ -227,7 +223,6 @@ export function detectAndMaskPIIInText(
 
   // 3. Phone Number Detection
   if (config.enablePhone) {
-    // Taiwanese mobile: 09xx-xxx-xxx, 09xxxxxxxx, or international +8869xxxxxxxx
     const phoneRegex = /(?:\+?886\s?|0)9\d{2}[-\s]?\d{3}[-\s]?\d{3}\b|\b0\d{1,2}[-\s]?\d{6,8}\b/g;
     const matches = Array.from(currentText.matchAll(phoneRegex));
     for (const match of matches) {
@@ -257,106 +252,114 @@ export function detectAndMaskPIIInText(
 
   // 5. English Name Detection
   if (config.enableEnglishName) {
-    // Matches capitalized English names like "John Smith", "David Miller"
     const engNameRegex = /\b[A-Z][a-z]{1,15}\s+[A-Z][a-z]{1,15}(?:\s+[A-Z][a-z]{1,15})?\b/g;
     const matches = Array.from(currentText.matchAll(engNameRegex));
     for (const match of matches) {
       const orig = match[0];
-      // Exclude common non-name capitalized English phrases
       if (['United States', 'Taiwan ROC', 'New York', 'Microsoft Corp'].includes(orig)) continue;
       const masked = maskEnglishName(orig, config.englishMaskStyle, config.maskCharacter);
       applyReplacement(orig, masked, 'english_name', '英文姓名');
     }
   }
 
-  // 6. Chinese Name Detection (using Segmentit + Surname Heuristics)
+  // 6. High-Precision Chinese Name Detection (Protected Index Algorithm)
   if (config.enableChineseName) {
-    const seg = getSegmentit();
+    const chars = Array.from(currentText);
+    const isProtectedIndex = new Array(chars.length).fill(false);
+
+    // Mark character indices of common vocabulary as protected (cannot be sliced into surnames)
+    for (const vocab of COMMON_VOCABULARY) {
+      let startIdx = 0;
+      while ((startIdx = currentText.indexOf(vocab, startIdx)) !== -1) {
+        for (let k = startIdx; k < startIdx + vocab.length; k++) {
+          isProtectedIndex[k] = true;
+        }
+        startIdx += vocab.length;
+      }
+    }
+
     const candidateNames = new Set<string>();
 
-    // Strategy A: Segmentit Tokenizer
+    // Segmentit POS Tagging
+    const seg = getSegmentit();
     if (seg) {
       try {
         const tokens = seg.doSegment(currentText);
         for (const token of tokens) {
-          // POSTAG.A_NR = 128 (Person Name)
           if (token.p === 128 || token.p === 'nr') {
-            if (token.w && token.w.length >= 2 && token.w.length <= 4) {
-              candidateNames.add(token.w);
+            const w = token.w;
+            if (w && w.length >= 2 && w.length <= 4 && !COMMON_VOCABULARY.includes(w)) {
+              candidateNames.add(w);
             }
           }
         }
       } catch (e) {
-        // Fallback to heuristic matcher below
+        // Fallback
       }
     }
 
-    // Strategy B: Chinese Surname Heuristic Matcher
-    // Compound Surnames (e.g. 歐陽修, 司馬光)
-    for (const compSurname of COMPOUND_SURNAMES) {
+    // Compound Surnames
+    for (const comp of COMPOUND_SURNAMES) {
       let idx = 0;
-      while ((idx = currentText.indexOf(compSurname, idx)) !== -1) {
-        // Look ahead 1 or 2 characters for given name
-        if (idx + compSurname.length + 1 <= currentText.length) {
-          const char1 = currentText[idx + compSurname.length];
-          if (/[\u4e00-\u9fa5]/.test(char1)) {
-            let nameCandidate = compSurname + char1;
-            if (idx + compSurname.length + 2 <= currentText.length) {
-              const char2 = currentText[idx + compSurname.length + 1];
-              if (/[\u4e00-\u9fa5]/.test(char2)) {
-                nameCandidate += char2;
-              }
+      while ((idx = currentText.indexOf(comp, idx)) !== -1) {
+        if (!isProtectedIndex[idx]) {
+          const remainingLen = currentText.length - idx;
+          if (remainingLen >= 3) {
+            let candidate = currentText.slice(idx, idx + (remainingLen >= 4 ? 4 : 3));
+            if (candidate.length === 4 && INVALID_GIVEN_CHARS.has(candidate[3])) {
+              candidate = candidate.slice(0, 3);
             }
-            if (!FALSE_POSITIVES.has(nameCandidate)) {
-              candidateNames.add(nameCandidate);
+            if (!COMMON_VOCABULARY.some(v => candidate.includes(v))) {
+              candidateNames.add(candidate);
             }
           }
         }
-        idx += compSurname.length;
+        idx += comp.length;
       }
     }
 
-    // Single-character Surnames (e.g. 張小明, 李大華, 王偉)
-    const chineseChars = Array.from(currentText);
-    for (let i = 0; i < chineseChars.length; i++) {
-      const char = chineseChars[i];
-      if (SINGLE_SURNAMES.has(char)) {
-        // Check 3-char name
-        if (i + 2 < chineseChars.length) {
-          const c2 = chineseChars[i + 1];
-          const c3 = chineseChars[i + 2];
+    // Single Surnames with Protected Index Filtering
+    for (let i = 0; i < chars.length; i++) {
+      if (isProtectedIndex[i]) continue;
+
+      const surname = chars[i];
+      if (SINGLE_SURNAMES.has(surname)) {
+        // 3-character name e.g. 張小明
+        if (i + 2 < chars.length && !isProtectedIndex[i + 1] && !isProtectedIndex[i + 2]) {
+          const c2 = chars[i + 1];
+          const c3 = chars[i + 2];
           if (/[\u4e00-\u9fa5]/.test(c2) && /[\u4e00-\u9fa5]/.test(c3)) {
-            const candidate3 = char + c2 + c3;
-            if (!FALSE_POSITIVES.has(candidate3) && !FALSE_POSITIVES.has(char + c2)) {
-              // Heuristic checks: given names rarely end with punctuation or prepositions
-              if (!['了', '在', '是', '有', '和', '與', '或', '的', '至', '到'].includes(c3)) {
-                candidateNames.add(candidate3);
-              }
+            const cand3 = surname + c2 + c3;
+            if (surname !== c2 && !INVALID_GIVEN_CHARS.has(c3) && !COMMON_VOCABULARY.some(v => cand3.includes(v))) {
+              candidateNames.add(cand3);
             }
           }
         }
 
-        // Check 2-char name
-        if (i + 1 < chineseChars.length) {
-          const c2 = chineseChars[i + 1];
+        // 2-character name e.g. 王偉
+        if (i + 1 < chars.length && !isProtectedIndex[i + 1]) {
+          const c2 = chars[i + 1];
           if (/[\u4e00-\u9fa5]/.test(c2)) {
-            const candidate2 = char + c2;
-            if (!FALSE_POSITIVES.has(candidate2)) {
-              // Check context if c2 is a very common verb/noun particle
-              if (!['哥', '姐', '氏', '總', '董', '長', '官'].includes(c2) &&
-                  !['在', '是', '有', '去', '來', '說', '看', '做', '吃'].includes(c2)) {
-                candidateNames.add(candidate2);
-              }
+            const cand2 = surname + c2;
+            const nextChar = i + 2 < chars.length ? chars[i + 2] : '';
+            if (surname !== c2 && !INVALID_GIVEN_CHARS.has(c2) && !['！', '!', '？', '?', '您', '了', '經', '官', '長', '員'].includes(nextChar) && !COMMON_VOCABULARY.some(v => cand2.includes(v))) {
+              candidateNames.add(cand2);
             }
           }
         }
       }
     }
 
-    // Sort candidates by length descending (mask 4-char before 3-char before 2-char)
+    // Sort by length descending and filter out substrings
     const sortedCandidates = Array.from(candidateNames).sort((a, b) => b.length - a.length);
-
+    const finalNames: string[] = [];
     for (const name of sortedCandidates) {
+      if (!finalNames.some(existing => existing.includes(name))) {
+        finalNames.push(name);
+      }
+    }
+
+    for (const name of finalNames) {
       if (currentText.includes(name)) {
         const masked = maskChineseName(name, config.chineseMaskStyle, config.maskCharacter);
         applyReplacement(name, masked, 'chinese_name', '中文姓名');
