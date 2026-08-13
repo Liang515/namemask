@@ -27,7 +27,7 @@ const COMMON_VOCABULARY = [
   '我們', '你們', '您好', '哈囉', '早安', '午安', '晚安', '品質', '價格', '優惠', '商品', '訂單', '發票',
   '回饋', '反饋', '台北', '台中', '台南', '高雄', '新北', '桃園', '新竹', '花蓮', '宜蘭', '苗栗', '彰化',
   '雲林', '嘉義', '屏東', '南投', '台東', '澎湖', '金門', '馬祖', '日本', '韓國', '中國', '美國', '英國',
-  '查詢', '洽詢', '諮詢', '三民', '方才', '上官網', '上官方', '官網', '官方'
+  '查詢', '洽詢', '諮詢', '三民', '方才', '上官網', '上官方', '官網', '官方', '寵物', '無法'
 ];
 
 // Modal particles and auxiliary words that cannot be part of a given name
@@ -281,17 +281,44 @@ export function detectAndMaskPIIInText(
 
     const candidateNames = new Set<string>();
 
-    // Segmentit POS Tagging
+    // Segmentit POS Tagging + Dictionary Word-Boundary Protection
+    // Segmentit's own tokenizer already knows which spans are ordinary dictionary
+    // words (e.g. 投保/方案/方式/簡訊/序號). Instead of only trusting the static
+    // COMMON_VOCABULARY list, protect ANY multi-char token it did not tag as a name
+    // (p !== 128/'nr') so the surname scanner below can never slice across it.
     const seg = getSegmentit();
     if (seg) {
       try {
         const tokens = seg.doSegment(currentText);
+        let offset = 0;
+        const nameTokenSpans: { w: string; start: number }[] = [];
         for (const token of tokens) {
-          if (token.p === 128 || token.p === 'nr') {
-            const w = token.w;
-            if (w && w.length >= 2 && w.length <= 4 && !COMMON_VOCABULARY.includes(w)) {
-              candidateNames.add(w);
+          const w: string = token.w || '';
+          const start = offset;
+          offset += w.length;
+          const isNameTag = token.p === 128 || token.p === 'nr';
+          if (isNameTag) {
+            nameTokenSpans.push({ w, start });
+          } else if (w.length >= 2 && !COMPOUND_SURNAMES.some(cs => w.startsWith(cs))) {
+            // Don't protect spans starting with a compound surname (e.g. 歐陽/上官) —
+            // segmentit sometimes lumps an unrecognized name together with trailing
+            // characters into one non-name token, and we don't want that to block
+            // the compound-surname scan below from still finding the name.
+            for (let k = start; k < start + w.length; k++) {
+              isProtectedIndex[k] = true;
             }
+          }
+        }
+        for (const { w, start } of nameTokenSpans) {
+          if (w.length >= 2 && w.length <= 4 && !COMMON_VOCABULARY.includes(w)) {
+            let overlapsProtected = false;
+            for (let k = start; k < start + w.length; k++) {
+              if (isProtectedIndex[k]) {
+                overlapsProtected = true;
+                break;
+              }
+            }
+            if (!overlapsProtected) candidateNames.add(w);
           }
         }
       } catch (e) {
