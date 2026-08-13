@@ -22,6 +22,7 @@ export function MaskConfigurator({
   );
   const [outputMode, setOutputMode] = useState<'append_column' | 'replace_column'>('append_column');
   const [customOutputColumnName, setCustomOutputColumnName] = useState<string>('B');
+  const [blankIfUnmasked, setBlankIfUnmasked] = useState<boolean>(true);
   const [maskCharacter, setMaskCharacter] = useState<string>('*');
 
   // Rule Toggles
@@ -101,6 +102,7 @@ export function MaskConfigurator({
       targetColumns: selectedColumns,
       outputMode,
       customOutputColumnName: customOutputColumnName || 'B',
+      blankIfUnmasked,
       maskCharacter,
       enableChineseName,
       enableEnglishName,
@@ -462,15 +464,26 @@ export function MaskConfigurator({
                 </label>
 
                 {outputMode === 'append_column' && (
-                  <div className="pl-6 pt-1 flex items-center gap-2">
-                    <span className="text-xs text-slate-500">輸出欄位名稱：</span>
-                    <input
-                      type="text"
-                      value={customOutputColumnName}
-                      onChange={(e) => setCustomOutputColumnName(e.target.value)}
-                      placeholder="例如: B 或 遮蔽結果"
-                      className="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 font-semibold text-blue-600 dark:text-blue-400 w-36"
-                    />
+                  <div className="pl-6 pt-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">輸出欄位名稱：</span>
+                      <input
+                        type="text"
+                        value={customOutputColumnName}
+                        onChange={(e) => setCustomOutputColumnName(e.target.value)}
+                        placeholder="例如: B 或 遮蔽結果"
+                        className="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 font-semibold text-blue-600 dark:text-blue-400 w-36"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={blankIfUnmasked}
+                        onChange={(e) => setBlankIfUnmasked(e.target.checked)}
+                        className="w-4 h-4 accent-blue-600 rounded cursor-pointer"
+                      />
+                      <span>僅在有檢出個資/姓名時才填入 B 欄，未遮蔽則保持空白 (Blank if no PII)</span>
+                    </label>
                   </div>
                 )}
 

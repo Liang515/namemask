@@ -82,8 +82,14 @@ export async function processExcelRowsChunked(
           ? config.customOutputColumnName
           : `${colName}_Masked`;
 
+        const hasPII = entities.length > 0;
+
         if (config.outputMode === 'append_column') {
-          newRow[outputCol] = maskedText;
+          if (hasPII) {
+            newRow[outputCol] = maskedText;
+          } else {
+            newRow[outputCol] = config.blankIfUnmasked ? '' : cellVal;
+          }
         } else {
           newRow[colName] = maskedText;
         }
@@ -93,7 +99,7 @@ export async function processExcelRowsChunked(
           : `${colName}_Masked`;
 
         if (config.outputMode === 'append_column') {
-          newRow[outputCol] = cellVal;
+          newRow[outputCol] = '';
         }
       }
     }

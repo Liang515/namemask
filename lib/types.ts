@@ -26,6 +26,7 @@ export interface MaskingConfig {
   targetColumns: string[];
   outputMode: 'append_column' | 'replace_column';
   customOutputColumnName?: string; // e.g. 'B' or '[Column]_Masked'
+  blankIfUnmasked?: boolean; // If true, Column B remains empty when no PII is detected
   maskCharacter: string; // '*', 'X', '[MASK]'
   
   // Rule Toggles
