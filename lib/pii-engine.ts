@@ -44,6 +44,11 @@ let segmentitInstance: any = null;
 // part of a person's given name, even when the character is also a known surname
 // (e.g. 何 in 為何/如何 is tagged as a pronoun, not a surname).
 let functionWordPosMask: number | null = null;
+// Bitmask of proper-noun POS tags (place/organization/other-proper-noun). Tokens
+// tagged with these are excluded from word-boundary protection: a real personal
+// name is far more likely to collide with a place/org name (e.g. 玉山 in 常玉山)
+// than with an ordinary common word, so when ambiguous here we still mask.
+let properNounPosMask: number | null = null;
 
 function getSegmentit() {
   if (typeof window === 'undefined') return null;
@@ -63,6 +68,10 @@ function getSegmentit() {
           (POSTAG.D_U || 0) | // 助詞 auxiliary particle
           (POSTAG.D_Y || 0) | // 語氣詞 modal particle
           (POSTAG.D_E || 0); // 嘆詞 interjection
+        properNounPosMask =
+          (POSTAG.A_NS || 0) | // 地名 place name
+          (POSTAG.A_NT || 0) | // 機構團體 organization
+          (POSTAG.A_NZ || 0); // 其他專名 other proper noun
       }
     } catch (e) {
       console.warn('Failed to load segmentit:', e);
@@ -317,10 +326,15 @@ export function detectAndMaskPIIInText(
             typeof token.p === 'number' &&
             functionWordPosMask !== null &&
             (token.p & functionWordPosMask) > 0;
+          const isProperNoun =
+            typeof token.p === 'number' &&
+            properNounPosMask !== null &&
+            (token.p & properNounPosMask) > 0;
           if (isNameTag) {
             nameTokenSpans.push({ w, start });
           } else if (
             (w.length >= 2 || isFunctionWord) &&
+            !isProperNoun &&
             !COMPOUND_SURNAMES.some(cs => w.startsWith(cs))
           ) {
             // Don't protect spans starting with a compound surname (e.g. 歐陽/上官) —
