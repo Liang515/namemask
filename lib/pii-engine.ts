@@ -27,7 +27,8 @@ const COMMON_VOCABULARY = [
   '我們', '你們', '您好', '哈囉', '早安', '午安', '晚安', '品質', '價格', '優惠', '商品', '訂單', '發票',
   '回饋', '反饋', '台北', '台中', '台南', '高雄', '新北', '桃園', '新竹', '花蓮', '宜蘭', '苗栗', '彰化',
   '雲林', '嘉義', '屏東', '南投', '台東', '澎湖', '金門', '馬祖', '日本', '韓國', '中國', '美國', '英國',
-  '查詢', '洽詢', '諮詢', '三民', '方才', '上官網', '上官方', '官網', '官方', '寵物', '無法'
+  '查詢', '洽詢', '諮詢', '三民', '方才', '上官網', '上官方', '官網', '官方', '寵物', '無法',
+  '比利', '比利時', '毛小孩', '毛起', '仙台', '申請'
 ];
 
 // Modal particles and auxiliary words that cannot be part of a given name
@@ -38,17 +39,31 @@ const INVALID_GIVEN_CHARS = new Set([
 
 // Singleton segmentit instance
 let segmentitInstance: any = null;
+// Bitmask of POS tags that mark a character as a closed-class function word
+// (pronoun/conjunction/preposition/particle/interjection) — these can never be
+// part of a person's given name, even when the character is also a known surname
+// (e.g. 何 in 為何/如何 is tagged as a pronoun, not a surname).
+let functionWordPosMask: number | null = null;
 
 function getSegmentit() {
   if (typeof window === 'undefined') return null;
   if (!segmentitInstance) {
     try {
       const segmentitPkg = require('segmentit');
-      const { Segment, useDefault, ChsNameTokenizer, ChsNameOptimizer } = segmentitPkg;
+      const { Segment, useDefault, ChsNameTokenizer, ChsNameOptimizer, POSTAG } = segmentitPkg;
       const seg = useDefault(new Segment());
       if (ChsNameTokenizer) seg.use(ChsNameTokenizer);
       if (ChsNameOptimizer) seg.use(ChsNameOptimizer);
       segmentitInstance = seg;
+      if (POSTAG) {
+        functionWordPosMask =
+          (POSTAG.D_R || 0) | // 代詞 pronoun (e.g. 何/誰/什麼)
+          (POSTAG.D_C || 0) | // 連詞 conjunction (e.g. 又/而/且)
+          (POSTAG.D_P || 0) | // 介詞 preposition
+          (POSTAG.D_U || 0) | // 助詞 auxiliary particle
+          (POSTAG.D_Y || 0) | // 語氣詞 modal particle
+          (POSTAG.D_E || 0); // 嘆詞 interjection
+      }
     } catch (e) {
       console.warn('Failed to load segmentit:', e);
     }
@@ -297,9 +312,17 @@ export function detectAndMaskPIIInText(
           const start = offset;
           offset += w.length;
           const isNameTag = token.p === 128 || token.p === 'nr';
+          const isFunctionWord =
+            w.length === 1 &&
+            typeof token.p === 'number' &&
+            functionWordPosMask !== null &&
+            (token.p & functionWordPosMask) > 0;
           if (isNameTag) {
             nameTokenSpans.push({ w, start });
-          } else if (w.length >= 2 && !COMPOUND_SURNAMES.some(cs => w.startsWith(cs))) {
+          } else if (
+            (w.length >= 2 || isFunctionWord) &&
+            !COMPOUND_SURNAMES.some(cs => w.startsWith(cs))
+          ) {
             // Don't protect spans starting with a compound surname (e.g. 歐陽/上官) —
             // segmentit sometimes lumps an unrecognized name together with trailing
             // characters into one non-name token, and we don't want that to block
