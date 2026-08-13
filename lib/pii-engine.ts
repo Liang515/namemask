@@ -28,7 +28,9 @@ const COMMON_VOCABULARY = [
   '回饋', '反饋', '台北', '台中', '台南', '高雄', '新北', '桃園', '新竹', '花蓮', '宜蘭', '苗栗', '彰化',
   '雲林', '嘉義', '屏東', '南投', '台東', '澎湖', '金門', '馬祖', '日本', '韓國', '中國', '美國', '英國',
   '查詢', '洽詢', '諮詢', '三民', '方才', '上官網', '上官方', '官網', '官方', '寵物', '無法',
-  '比利', '比利時', '毛小孩', '毛起', '仙台', '申請'
+  '比利', '比利時', '毛小孩', '毛起', '仙台', '申請', '義大利',
+  '對方', '我方', '甲方', '乙方', '雙方', '單方', '他方', '校方', '警方', '資方', '勞方',
+  '買方', '賣方', '廠方', '院方', '貴方'
 ];
 
 // Modal particles and auxiliary words that cannot be part of a given name
@@ -291,13 +293,20 @@ export function detectAndMaskPIIInText(
   if (config.enableChineseName) {
     const chars = Array.from(currentText);
     const isProtectedIndex = new Array(chars.length).fill(false);
+    // Exclusive end of the span that protected each index. Needed to tell apart
+    // "this char is genuinely inside a common word" from "segmentit happened to
+    // fuse this char with unrelated *following* text it couldn't otherwise parse"
+    // — the latter must not be allowed to veto a real name's last character.
+    const protectedSpanEnd = new Array(chars.length).fill(0);
 
     // Mark character indices of common vocabulary as protected (cannot be sliced into surnames)
     for (const vocab of COMMON_VOCABULARY) {
       let startIdx = 0;
       while ((startIdx = currentText.indexOf(vocab, startIdx)) !== -1) {
-        for (let k = startIdx; k < startIdx + vocab.length; k++) {
+        const end = startIdx + vocab.length;
+        for (let k = startIdx; k < end; k++) {
           isProtectedIndex[k] = true;
+          protectedSpanEnd[k] = end;
         }
         startIdx += vocab.length;
       }
@@ -341,8 +350,10 @@ export function detectAndMaskPIIInText(
             // segmentit sometimes lumps an unrecognized name together with trailing
             // characters into one non-name token, and we don't want that to block
             // the compound-surname scan below from still finding the name.
-            for (let k = start; k < start + w.length; k++) {
+            const end = start + w.length;
+            for (let k = start; k < end; k++) {
               isProtectedIndex[k] = true;
+              protectedSpanEnd[k] = end;
             }
           }
         }
@@ -390,7 +401,12 @@ export function detectAndMaskPIIInText(
       const surname = chars[i];
       if (SINGLE_SURNAMES.has(surname)) {
         // 3-character name e.g. 張小明
-        if (i + 2 < chars.length && !isProtectedIndex[i + 1] && !isProtectedIndex[i + 2]) {
+        // The last character (c3) is only disqualified if its protecting span ends
+        // AT OR BEFORE this candidate's own boundary — if it overhangs further
+        // (e.g. segmentit fused it with unrelated trailing text like 明來電), that
+        // overhang says nothing about c3 itself and must not block the name.
+        const c3Blocked = isProtectedIndex[i + 2] && protectedSpanEnd[i + 2] <= i + 3;
+        if (i + 2 < chars.length && !isProtectedIndex[i + 1] && !c3Blocked) {
           const c2 = chars[i + 1];
           const c3 = chars[i + 2];
           if (/[\u4e00-\u9fa5]/.test(c2) && /[\u4e00-\u9fa5]/.test(c3)) {
