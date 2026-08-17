@@ -410,7 +410,7 @@ export function detectAndMaskPIIInText(
         }
         for (const { w, start } of nameTokenSpans) {
           const precededByRuHeWei =
-            w[0] === '何' && start > 0 && (currentText[start - 1] === '如' || currentText[start - 1] === '為');
+            w[0] === '何' && start > 0 && ['如', '為', '任', '幾', '奈'].includes(currentText[start - 1]);
           if (w.length >= 2 && w.length <= 4 && !COMMON_VOCABULARY.includes(w) && !precededByRuHeWei) {
             let overlapsProtected = false;
             for (let k = start; k < start + w.length; k++) {
@@ -484,13 +484,15 @@ export function detectAndMaskPIIInText(
       if (isProtectedIndex[i]) continue;
 
       const surname = chars[i];
-      // 何 directly after 如/為 is always the "how"/"why" pronoun (如何/為何),
-      // never a surname, regardless of how segmentit happens to tag this
-      // particular token. Checked as a direct text rule instead of relying on
-      // segmentit's POS tag so it can't keep resurfacing for every new verb
-      // that follows (何處理, 何辦理, 何延長, ... — an unbounded list one
-      // whack-a-mole fix at a time can never fully cover).
-      if (surname === '何' && i > 0 && (chars[i - 1] === '如' || chars[i - 1] === '為')) {
+      // 何 directly after 如/為/任/幾/奈 is always part of a fixed pronoun
+      // compound (如何/為何/任何/幾何/奈何), never a surname, regardless of
+      // how segmentit happens to tag this particular token. Checked as a
+      // direct text rule instead of relying on segmentit's POS tag so it
+      // can't keep resurfacing for every new word that follows 何 in one of
+      // these compounds (何處理, 何辦理, 何延長, 何通知 via 任何通知, ... —
+      // an unbounded list one whack-a-mole fix at a time can never fully
+      // cover).
+      if (surname === '何' && i > 0 && ['如', '為', '任', '幾', '奈'].includes(chars[i - 1])) {
         continue;
       }
       if (SINGLE_SURNAMES.has(surname)) {
