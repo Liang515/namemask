@@ -62,6 +62,43 @@ const INVALID_GIVEN_CHARS = new Set([
   '給', '被', '讓', '把', '向', '對', '從', '用', '及', '等', '因', '為', '在', '過', '也', '您'
 ]);
 
+// Characters common in real Chinese/Taiwanese given names — used as a
+// *positive* signal alongside the vocabulary blacklist above. Ordinary
+// business/domain words (資格/規定/金額/航空/分公司/通知/...) essentially
+// never use these characters, while real given names overwhelmingly
+// contain at least one, so requiring at least one hit among the candidate's
+// given-name characters filters out a broad class of false positives the
+// vocabulary list can't fully enumerate — without needing a model. Not
+// exhaustive (Chinese given names can technically use any character), so
+// this is intentionally used as a permissive "at least one of two
+// characters" check, not a strict allowlist, to avoid rejecting real names
+// that use one uncommon character alongside a common one.
+const COMMON_GIVEN_NAME_CHARS = new Set([
+  // Nature / auspicious imagery
+  '山', '水', '雲', '雨', '雪', '月', '星', '辰', '日', '春', '夏', '秋', '冬', '林', '森', '松',
+  '柏', '竹', '梅', '蘭', '菊', '荷', '蓮', '花', '葉', '枝', '果', '實', '海', '河', '江', '湖',
+  '泉', '溪', '石', '玉', '珠', '寶', '金', '銀', '銅', '鑫', '虹', '霞', '燕', '鶯', '鳳', '鸞',
+  '鴻', '鵬', '龍', '虎', '鷹',
+  // Virtue / character
+  '仁', '義', '禮', '智', '信', '忠', '孝', '廉', '節', '誠', '正', '直', '善', '良', '德', '賢',
+  '聖', '哲', '慧', '睿', '明', '亮', '清', '純', '潔', '雅', '靜', '安', '寧', '和', '平', '泰',
+  '康', '健', '壽', '福', '祿', '禎', '祥', '瑞', '吉', '慶', '興', '旺', '盛', '榮', '華', '富',
+  '貴', '尊',
+  // Beauty / gentleness (often female-leaning)
+  '美', '麗', '秀', '倩', '妍', '婷', '娟', '娜', '芳', '芬', '芝', '芸', '茵', '萱', '蓉', '蓓',
+  '蕾', '英', '瑛', '瑤', '琳', '珍', '珊', '琪', '瑜', '璇', '雯', '晴', '涵', '妤', '晨', '曦',
+  '昕', '欣', '悅', '怡', '恬', '柔', '嫻', '淑', '惠', '敏', '穎', '姿', '姍', '亭', '凡', '依',
+  '若', '萌', '語', '詩', '韻', '馨', '玲', '琴', '蘋', '萍',
+  // Strength / achievement (often male-leaning)
+  '強', '壯', '勇', '剛', '毅', '勁', '豪', '傑', '俊', '偉', '峰', '岳', '嶽', '雄', '霸', '霖',
+  '宇', '軒', '翔', '飛', '騰', '駿', '駒', '澤', '浩', '洋', '淵', '深', '凱', '勝', '冠', '鈞',
+  '銘', '煒', '炫', '燁', '晟', '昱', '煌', '炎', '焱', '恩', '睿',
+  // Family / generational / common name components
+  '家', '國', '建', '志', '文', '武', '永', '長', '昌', '發', '達', '成', '功', '業', '承', '繼',
+  '傳', '宗', '祖', '先', '世', '代', '子', '孫', '元', '原', '本', '基', '根', '大', '小', '中',
+  '維', '倫', '思', '育', '興', '智', '軍', '輝', '光', '學', '進',
+]);
+
 // Singleton segmentit instance
 let segmentitInstance: any = null;
 // Bitmask of POS tags that mark a character as a closed-class function word
@@ -514,7 +551,12 @@ export function detectAndMaskPIIInText(
           const c3 = chars[i + 2];
           if (/[\u4e00-\u9fa5]/.test(c2) && /[\u4e00-\u9fa5]/.test(c3)) {
             const cand3 = surname + c2 + c3;
-            if (surname !== c2 && !INVALID_GIVEN_CHARS.has(c3) && !COMMON_VOCABULARY.some(v => cand3.includes(v))) {
+            // Require at least one of the two given-name characters to look
+            // like an actual name character — permissive on purpose (only
+            // one of two needs to hit) so a real name pairing one uncommon
+            // character with a common one still passes.
+            const looksLikeName = COMMON_GIVEN_NAME_CHARS.has(c2) || COMMON_GIVEN_NAME_CHARS.has(c3);
+            if (surname !== c2 && !INVALID_GIVEN_CHARS.has(c3) && !COMMON_VOCABULARY.some(v => cand3.includes(v)) && looksLikeName) {
               candidateNames.add(cand3);
             }
           }
@@ -526,7 +568,7 @@ export function detectAndMaskPIIInText(
           if (/[\u4e00-\u9fa5]/.test(c2)) {
             const cand2 = surname + c2;
             const nextChar = i + 2 < chars.length ? chars[i + 2] : '';
-            if (surname !== c2 && !INVALID_GIVEN_CHARS.has(c2) && !['！', '!', '？', '?', '您', '了', '經', '官', '長', '員'].includes(nextChar) && !COMMON_VOCABULARY.some(v => cand2.includes(v))) {
+            if (surname !== c2 && !INVALID_GIVEN_CHARS.has(c2) && !['！', '!', '？', '?', '您', '了', '經', '官', '長', '員'].includes(nextChar) && !COMMON_VOCABULARY.some(v => cand2.includes(v)) && COMMON_GIVEN_NAME_CHARS.has(c2)) {
               candidateNames.add(cand2);
             }
           }
