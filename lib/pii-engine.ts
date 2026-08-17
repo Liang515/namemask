@@ -56,7 +56,9 @@ let functionWordPosMask: number | null = null;
 let properNounPosMask: number | null = null;
 
 function getSegmentit() {
-  if (typeof window === 'undefined') return null;
+  // Runs in the browser main thread or inside a Web Worker (WorkerGlobalScope
+  // has `self` but not `window`) — only skip on the Node.js SSR pass.
+  if (typeof self === 'undefined') return null;
   if (!segmentitInstance) {
     try {
       const segmentitPkg = require('segmentit');

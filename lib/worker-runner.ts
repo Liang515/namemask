@@ -11,10 +11,31 @@ export interface ChunkProgressCallback {
   ): void;
 }
 
+// Yield to the browser tied to its actual paint cycle rather than an
+// arbitrary setTimeout delay, so a chunk boundary reliably lines up with a
+// real rendering opportunity instead of possibly being coalesced with the
+// next chunk before anything paints.
+function nextFrame(): Promise<void> {
+  if (typeof requestAnimationFrame === 'function') {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  }
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// Rows to look at before re-checking the clock. Checking performance.now()
+// on every single row would add its own overhead on huge files, so batch
+// the clock check but keep the batch small enough that a slow chunk still
+// yields promptly.
+const CLOCK_CHECK_STRIDE = 25;
+// Target time budget per chunk before yielding — comfortably under a single
+// 16.7ms (60fps) frame so the browser still has room to do layout/paint.
+const CHUNK_BUDGET_MS = 10;
+
 /**
  * High-Performance Client-Side Async Chunk Processor
  * Processes heavy datasets (tens of thousands of rows / millions of words)
- * using non-blocking scheduler.yield() / setTimeout chunks.
+ * using non-blocking, time-budgeted chunks yielded via requestAnimationFrame
+ * so the UI (progress bar, pause/cancel buttons) stays responsive throughout.
  */
 export async function processExcelRowsChunked(
   rows: Record<string, any>[],
@@ -33,11 +54,7 @@ export async function processExcelRowsChunked(
   let processedWords = 0;
 
   const startTime = performance.now();
-  let lastProgressReportTime = performance.now();
-  const chunkSize = 200; // rows per chunk before yielding to main thread
-  // Report at least ~100 times over the run so small files (fewer rows than
-  // chunkSize) still show incremental progress instead of jumping 0% -> 100%.
-  const progressInterval = Math.max(1, Math.min(chunkSize, Math.ceil(totalRows / 100)));
+  let chunkStartTime = startTime;
 
   for (let i = 0; i < totalRows; i++) {
     // Check cancellation
@@ -109,10 +126,15 @@ export async function processExcelRowsChunked(
 
     maskedRows.push(newRow);
 
-    // Yield to main thread every chunkSize rows or 50ms
+    // Yield once this chunk has eaten its time budget (checked every
+    // CLOCK_CHECK_STRIDE rows) or we've reached the last row, reporting
+    // progress every time we do. Because the budget is time-based rather
+    // than a fixed row count, small files yield almost every row (visible
+    // incremental progress) and large files yield roughly once per frame
+    // regardless of how expensive each row's detection turns out to be.
+    const isLastRow = i === totalRows - 1;
     const now = performance.now();
-    if (i % progressInterval === 0 || i === totalRows - 1 || now - lastProgressReportTime > 50) {
-      lastProgressReportTime = now;
+    if (isLastRow || (i % CLOCK_CHECK_STRIDE === 0 && now - chunkStartTime > CHUNK_BUDGET_MS)) {
       const elapsedMs = Math.max(1, now - startTime);
       const rowsPerSec = Math.round((i + 1) / (elapsedMs / 1000));
       const wordsPerSec = Math.round(processedWords / (elapsedMs / 1000));
@@ -135,11 +157,9 @@ export async function processExcelRowsChunked(
 
       onProgress(i + 1, totalRows, currentStats, auditLogs.slice(-10), maskedRows.slice(-5));
 
-      // Yield control to main thread to keep UI responsive
-      if (typeof window !== 'undefined' && 'scheduler' in window && 'yield' in (window as any).scheduler) {
-        await (window as any).scheduler.yield();
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 0));
+      if (!isLastRow) {
+        await nextFrame();
+        chunkStartTime = performance.now();
       }
     }
   }
