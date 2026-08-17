@@ -35,6 +35,9 @@ export async function processExcelRowsChunked(
   const startTime = performance.now();
   let lastProgressReportTime = performance.now();
   const chunkSize = 200; // rows per chunk before yielding to main thread
+  // Report at least ~100 times over the run so small files (fewer rows than
+  // chunkSize) still show incremental progress instead of jumping 0% -> 100%.
+  const progressInterval = Math.max(1, Math.min(chunkSize, Math.ceil(totalRows / 100)));
 
   for (let i = 0; i < totalRows; i++) {
     // Check cancellation
@@ -108,7 +111,7 @@ export async function processExcelRowsChunked(
 
     // Yield to main thread every chunkSize rows or 50ms
     const now = performance.now();
-    if (i % chunkSize === 0 || i === totalRows - 1 || now - lastProgressReportTime > 50) {
+    if (i % progressInterval === 0 || i === totalRows - 1 || now - lastProgressReportTime > 50) {
       lastProgressReportTime = now;
       const elapsedMs = Math.max(1, now - startTime);
       const rowsPerSec = Math.round((i + 1) / (elapsedMs / 1000));
