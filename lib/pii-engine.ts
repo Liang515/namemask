@@ -296,7 +296,13 @@ export function detectAndMaskPIIInText(
 
   // 6. High-Precision Chinese Name Detection (Protected Index Algorithm)
   if (config.enableChineseName) {
-    const chars = Array.from(currentText);
+    // Index by UTF-16 code unit (not Array.from's Unicode code points) so
+    // this array's indices line up with indexOf/slice/includes and with the
+    // offsets segmentit reports below — otherwise any astral character
+    // earlier in the text (e.g. most emoji, which are surrogate pairs) shifts
+    // the two index spaces apart and silently misaligns every protection
+    // check and surname-position lookup after it.
+    const chars = currentText.split('');
     const isProtectedIndex = new Array(chars.length).fill(false);
     // Exclusive end of the span that protected each index. Needed to tell apart
     // "this char is genuinely inside a common word" from "segmentit happened to
@@ -332,8 +338,18 @@ export function detectAndMaskPIIInText(
         const nameTokenSpans: { w: string; start: number }[] = [];
         for (const token of tokens) {
           const w: string = token.w || '';
-          const start = offset;
-          offset += w.length;
+          if (!w) continue;
+          // segmentit's token stream isn't guaranteed to be a lossless,
+          // gapless decomposition of the input — it silently drops some
+          // characters (e.g. whitespace) rather than emitting a token for
+          // them. Accumulating `offset += w.length` assumes no gaps, so any
+          // dropped character permanently drifts every later token's
+          // computed position away from its real index in currentText.
+          // Re-anchor via indexOf so a dropped character only costs this one
+          // lookup instead of silently corrupting all downstream positions.
+          const foundAt = currentText.indexOf(w, offset);
+          const start = foundAt !== -1 ? foundAt : offset;
+          offset = start + w.length;
           const isNameTag = token.p === 128 || token.p === 'nr';
           const isFunctionWord =
             w.length === 1 &&
@@ -355,7 +371,21 @@ export function detectAndMaskPIIInText(
             // segmentit sometimes lumps an unrecognized name together with trailing
             // characters into one non-name token, and we don't want that to block
             // the compound-surname scan below from still finding the name.
-            const end = start + w.length;
+            //
+            // Similarly, when a real name goes unrecognized, segmentit often fuses
+            // the *preceding* word directly onto the surname into one non-name
+            // token (e.g. "客戶楊小明" -> "客戶楊" + "小" + "明來電"). Blanket-
+            // protecting that whole span would swallow the surname's own index and
+            // silently drop the name, so leave a *multi-char* token's last character
+            // unprotected when it's a single surname — the surname scanner below
+            // still requires everything after it to look like a plausible name.
+            // Restricted to w.length >= 2: a length-1 token that is itself a surname
+            // is exactly the isFunctionWord case above (e.g. 何 tagged as a pronoun
+            // inside 如何) and must stay fully protected.
+            let end = start + w.length;
+            if (w.length >= 2 && SINGLE_SURNAMES.has(w[w.length - 1])) {
+              end -= 1;
+            }
             for (let k = start; k < end; k++) {
               isProtectedIndex[k] = true;
               protectedSpanEnd[k] = end;
