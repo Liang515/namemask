@@ -6,13 +6,21 @@ const SINGLE_SURNAMES = new Set([
   '廖', '賴', '周', '葉', '蘇', '莊', '呂', '江', '何', '蕭', '羅', '高', '潘', '朱', '簡', '鍾', '彭',
   '游', '詹', '胡', '施', '沈', '余', '趙', '盧', '梁', '顏', '柯', '孫', '魏', '翁', '戴', '范', '宋',
   '方', '鄧', '杜', '傅', '侯', '曹', '薛', '丁', '卓', '馬', '董', '唐', '藍', '石', '蔣', '古', '紀',
-  '常', '薛', '姜', '賈', '嚴', '顧', '龔', '邵', '萬', '錢', '覃', '溫', '徐', '易', '喬', '莫', '關'
+  '常', '薛', '姜', '賈', '嚴', '顧', '龔', '邵', '萬', '錢', '覃', '溫', '徐', '易', '喬', '莫', '關',
+  // Simplified-Chinese forms of the above, for text with mixed-in Simplified
+  // content (OCR, mainland sources, etc.) — only entries that differ from
+  // the Traditional form need listing; identical ones are already covered.
+  '陈', '黄', '张', '吴', '刘', '杨', '许', '郑', '谢', '赖', '叶', '苏', '庄', '吕', '萧', '罗',
+  '简', '钟', '赵', '卢', '颜', '孙', '邓', '马', '蓝', '蒋', '纪', '贾', '严', '顾', '龚', '万',
+  '钱', '温', '乔', '关'
 ]);
 
 // Compound Chinese surnames (複姓)
 const COMPOUND_SURNAMES = [
   '歐陽', '司馬', '上官', '諸葛', '夏侯', '尉遲', '公孫', '申屠', '慕容', '宇文', '司徒', '鮮于',
-  '赫連', '皇甫', '羊舌', '澹台', '公冶', '宗政', '濮陽', '淳于', '單于', '太史', '端木', '巫馬'
+  '赫連', '皇甫', '羊舌', '澹台', '公冶', '宗政', '濮陽', '淳于', '單于', '太史', '端木', '巫馬',
+  // Simplified-Chinese forms (only where different from Traditional)
+  '欧阳', '诸葛', '尉迟', '公孙', '鲜于', '赫连', '濮阳', '单于', '巫马'
 ];
 
 // Common non-name vocabulary, politeness words, and business terms that MUST NOT be masked
