@@ -45,7 +45,8 @@ const COMMON_VOCABULARY = [
   '延長', '通報', '選擇', '補繳', '購買', '電子', '書面', '補填', '何會', '何幫',
   '進行', '程班', '何變', '理賠', '保險', '嚴重',
   '保額', '責任險', '查閱', '高處', '何況', '何處', '部門', '程跟', '馬上', '風險', '作業',
-  '許久', '廉航', '曾經', '曾於', '古屋', '何紙'
+  '許久', '廉航', '曾經', '曾於', '古屋', '何紙',
+  '關係', '方便', '延誤', '證明', '權益'
 ];
 
 // Modal particles and auxiliary words that cannot be part of a given name
@@ -321,6 +322,12 @@ export function detectAndMaskPIIInText(
     // fuse this char with unrelated *following* text it couldn't otherwise parse"
     // — the latter must not be allowed to veto a real name's last character.
     const protectedSpanEnd = new Array(chars.length).fill(0);
+    // Protection from the static COMMON_VOCABULARY list is reliable — it's an
+    // exact, deliberate match — unlike segmentit's token-boundary protection,
+    // which can be an unreliable guess (see the c3Blocked overhang comment
+    // below). Track vocab-sourced protection separately so that distinction
+    // survives into the surname scan.
+    const isVocabProtected = new Array(chars.length).fill(false);
 
     // Mark character indices of common vocabulary as protected (cannot be sliced into surnames)
     for (const vocab of COMMON_VOCABULARY) {
@@ -330,6 +337,7 @@ export function detectAndMaskPIIInText(
         for (let k = startIdx; k < end; k++) {
           isProtectedIndex[k] = true;
           protectedSpanEnd[k] = end;
+          isVocabProtected[k] = true;
         }
         startIdx += vocab.length;
       }
@@ -384,20 +392,20 @@ export function detectAndMaskPIIInText(
             // characters into one non-name token, and we don't want that to block
             // the compound-surname scan below from still finding the name.
             //
-            // Similarly, when a real name goes unrecognized, segmentit often fuses
-            // the *preceding* word directly onto the surname into one non-name
-            // token (e.g. "客戶楊小明" -> "客戶楊" + "小" + "明來電"). Blanket-
-            // protecting that whole span would swallow the surname's own index and
-            // silently drop the name, so leave a *multi-char* token's last character
-            // unprotected when it's a single surname — the surname scanner below
-            // still requires everything after it to look like a plausible name.
-            // Restricted to w.length >= 2: a length-1 token that is itself a surname
-            // is exactly the isFunctionWord case above (e.g. 何 tagged as a pronoun
-            // inside 如何) and must stay fully protected.
-            let end = start + w.length;
-            if (w.length >= 2 && SINGLE_SURNAMES.has(w[w.length - 1])) {
-              end -= 1;
-            }
+            // Tried carving a surname's own position (and neighbors) out of this
+            // protection when a real name goes unrecognized and gets fused onto a
+            // neighboring word into one non-name token (e.g. "客戶楊小明" ->
+            // "客戶楊" + "小" + "明來電", or worse, "我父親吳志明" -> one opaque
+            // "父親吳志明" blob). Reverted: there's no reliable signal to tell that
+            // apart from an ordinary dictionary word that simply starts or ends
+            // with a surname character followed by more text segmentit didn't
+            // specifically recognize — confirmed by sweeping common vocabulary
+            // against every surname, which turned up hundreds of false positives
+            // like 客戶關手冊/客戶莫防護/客戶陳資格, even in natural sentence
+            // context. Full blanket protection misses some real names glued to
+            // their context this way, but that's the safer failure mode versus an
+            // unbounded flood of ordinary words misread as names.
+            const end = start + w.length;
             for (let k = start; k < end; k++) {
               isProtectedIndex[k] = true;
               protectedSpanEnd[k] = end;
@@ -463,7 +471,13 @@ export function detectAndMaskPIIInText(
         // AT OR BEFORE this candidate's own boundary — if it overhangs further
         // (e.g. segmentit fused it with unrelated trailing text like 明來電), that
         // overhang says nothing about c3 itself and must not block the name.
-        const c3Blocked = isProtectedIndex[i + 2] && protectedSpanEnd[i + 2] <= i + 3;
+        // The overhang exception only applies to segmentit-sourced protection
+        // (which is the unreliable guess it's compensating for) — a vocab hit
+        // is a deliberate, exact match and must always block c3 regardless of
+        // how far its span reaches (e.g. 王偉 followed directly by the
+        // protected word 先生 must not let 先 get treated as part of the name).
+        const c3Blocked =
+          isProtectedIndex[i + 2] && (isVocabProtected[i + 2] || protectedSpanEnd[i + 2] <= i + 3);
         if (i + 2 < chars.length && !isProtectedIndex[i + 1] && !c3Blocked) {
           const c2 = chars[i + 1];
           const c3 = chars[i + 2];
