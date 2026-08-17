@@ -47,7 +47,8 @@ const COMMON_VOCABULARY = [
   '保額', '責任險', '查閱', '高處', '何況', '何處', '部門', '程跟', '馬上', '風險', '作業',
   '許久', '廉航', '曾經', '曾於', '古屋', '何紙',
   '關係', '方便', '延誤', '證明', '權益',
-  '常見', '機車', '致電', '爾夫', '高鐵', '追撞', '怪怪', '那霸', '整件', '發生', '訊息', '明確', '高層', '常嗎'
+  '常見', '機車', '致電', '爾夫', '高鐵', '追撞', '怪怪', '那霸', '整件', '發生', '訊息', '明確', '高層', '常嗎',
+  '方法', '資訊', '事宜'
 ];
 
 // Modal particles and auxiliary words that cannot be part of a given name
@@ -323,12 +324,15 @@ export function detectAndMaskPIIInText(
     // fuse this char with unrelated *following* text it couldn't otherwise parse"
     // — the latter must not be allowed to veto a real name's last character.
     const protectedSpanEnd = new Array(chars.length).fill(0);
-    // Protection from the static COMMON_VOCABULARY list is reliable — it's an
-    // exact, deliberate match — unlike segmentit's token-boundary protection,
-    // which can be an unreliable guess (see the c3Blocked overhang comment
-    // below). Track vocab-sourced protection separately so that distinction
-    // survives into the surname scan.
-    const isVocabProtected = new Array(chars.length).fill(false);
+    // Protection from the static COMMON_VOCABULARY list, or from segmentit
+    // tagging a single character as a closed-class function word (e.g. 何 in
+    // 任何/奈何/何必, not just 如何/為何), is reliable — a deliberate, exact
+    // match rather than segmentit's token-boundary guess for ordinary
+    // multi-char words, which can be wrong (see the c3Blocked overhang
+    // comment below, and the name-recovery pass further down). Track this
+    // reliable protection separately so both places can tell it apart from
+    // the unreliable kind.
+    const isReliablyProtected = new Array(chars.length).fill(false);
 
     // Mark character indices of common vocabulary as protected (cannot be sliced into surnames)
     for (const vocab of COMMON_VOCABULARY) {
@@ -338,7 +342,7 @@ export function detectAndMaskPIIInText(
         for (let k = startIdx; k < end; k++) {
           isProtectedIndex[k] = true;
           protectedSpanEnd[k] = end;
-          isVocabProtected[k] = true;
+          isReliablyProtected[k] = true;
         }
         startIdx += vocab.length;
       }
@@ -392,24 +396,11 @@ export function detectAndMaskPIIInText(
             // segmentit sometimes lumps an unrecognized name together with trailing
             // characters into one non-name token, and we don't want that to block
             // the compound-surname scan below from still finding the name.
-            //
-            // Tried carving a surname's own position (and neighbors) out of this
-            // protection when a real name goes unrecognized and gets fused onto a
-            // neighboring word into one non-name token (e.g. "客戶楊小明" ->
-            // "客戶楊" + "小" + "明來電", or worse, "我父親吳志明" -> one opaque
-            // "父親吳志明" blob). Reverted: there's no reliable signal to tell that
-            // apart from an ordinary dictionary word that simply starts or ends
-            // with a surname character followed by more text segmentit didn't
-            // specifically recognize — confirmed by sweeping common vocabulary
-            // against every surname, which turned up hundreds of false positives
-            // like 客戶關手冊/客戶莫防護/客戶陳資格, even in natural sentence
-            // context. Full blanket protection misses some real names glued to
-            // their context this way, but that's the safer failure mode versus an
-            // unbounded flood of ordinary words misread as names.
             const end = start + w.length;
             for (let k = start; k < end; k++) {
               isProtectedIndex[k] = true;
               protectedSpanEnd[k] = end;
+              if (isFunctionWord) isReliablyProtected[k] = true;
             }
           }
         }
@@ -429,6 +420,38 @@ export function detectAndMaskPIIInText(
         }
       } catch (e) {
         // Fallback
+      }
+    }
+
+    // A real name that segmentit doesn't recognize often gets glued onto
+    // neighboring text into one opaque non-name token — the surname can end
+    // up buried anywhere in that blob, or the whole name can even get split
+    // across multiple separately-protected tokens (e.g. "我父親吳志明" ->
+    // "父親吳" + "志明" as two tokens, each blanket-protected above on its
+    // own). Patching this per-token is order- and boundary-sensitive and
+    // still misses names split across a token boundary, so instead do one
+    // final pass here: for every single-surname character not protected by
+    // the reliable, exact COMMON_VOCABULARY layer, force open a window of up
+    // to 3 characters for the surname scanner below, regardless of which
+    // segmentit token(s) they came from.
+    //
+    // This deliberately over-triggers — confirmed via a sweep of common
+    // vocabulary against every surname that it also reads a meaningful
+    // fraction of ordinary dictionary words as fake names (e.g. 客戶關手冊/
+    // 客戶莫防護/客戶陳資格), because segmentit gives an identical "opaque
+    // blob" signal whether it fused a surname onto an unrecognized name or
+    // onto any word it just didn't specifically recognize — there's no
+    // reliable way to tell those apart with this tokenizer. That trade-off
+    // is intentional here, per explicit product direction: prioritize not
+    // silently dropping a real name over minimizing false positives. Expect
+    // this to surface new "X isn't a name" reports needing vocabulary
+    // entries, same as the rest of COMMON_VOCABULARY.
+    for (let i = 0; i < chars.length; i++) {
+      if (!SINGLE_SURNAMES.has(chars[i]) || isReliablyProtected[i]) continue;
+      for (let j = i; j < Math.min(i + 3, chars.length); j++) {
+        if (!isReliablyProtected[j]) {
+          isProtectedIndex[j] = false;
+        }
       }
     }
 
@@ -478,7 +501,7 @@ export function detectAndMaskPIIInText(
         // how far its span reaches (e.g. 王偉 followed directly by the
         // protected word 先生 must not let 先 get treated as part of the name).
         const c3Blocked =
-          isProtectedIndex[i + 2] && (isVocabProtected[i + 2] || protectedSpanEnd[i + 2] <= i + 3);
+          isProtectedIndex[i + 2] && (isReliablyProtected[i + 2] || protectedSpanEnd[i + 2] <= i + 3);
         if (i + 2 < chars.length && !isProtectedIndex[i + 1] && !c3Blocked) {
           const c2 = chars[i + 1];
           const c3 = chars[i + 2];
